@@ -1,6 +1,5 @@
 # models/predictor.py
 
-# models/predictor.py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -60,16 +59,24 @@ class Predictor:
     def load_model(self):
         self.model = TemporalFusionTransformer.load_from_checkpoint(self.model_path)
 
+
     def predict(self):
         raw_predictions, x = self.model.predict(self.dataloader, mode="raw", return_x=True)
         decoder_target = x["decoder_target"]
         time_idxs = x["decoder_time_idx"].detach().cpu().numpy()
-        menu_ids = x["group_ids"][:, 0].detach().cpu().numpy()
+        menu_ids = x["groups"][0].detach().cpu().numpy()
+        print("x keys:", x.keys())
 
         # 평균 + 예측분산으로 오차 추정 (QuantileLoss 기반)
         means = raw_predictions["prediction"].mean(1).detach().cpu().numpy()
         p10 = raw_predictions["prediction"][:, :, 0].detach().cpu().numpy()
         p90 = raw_predictions["prediction"][:, :, -1].detach().cpu().numpy()
+
+        print("menu_ids (after repeat):", np.repeat(menu_ids, means.shape[1]).shape)
+        print("time_idxs:", time_idxs.flatten().shape)
+        print("means:", means.flatten().shape)
+        print("p10:", p10.flatten().shape)
+        print("p90:", p90.flatten().shape)
 
         self.result_df = pd.DataFrame({
             "menu_id": np.repeat(menu_ids, means.shape[1]),

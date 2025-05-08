@@ -77,6 +77,29 @@ class Predictor:
 
 
     def predict(self):
+
+        # 1. dataloader 진단
+        print("📦 Checking dataloader...")
+        print("len(dataloader):", len(self.dataloader))
+            
+        for i, batch in enumerate(self.dataloader):
+            x = batch[0]  # ← 예측할 입력 데이터
+            print(f"Batch {i} keys:", x.keys())
+            break
+
+        # 2. raw_data 내 예측용 row 존재 여부
+        print("📅 Checking future data...")
+        print("Max time_idx in dataset:", self.raw_data["time_idx"].max())
+        print("Example future rows:")
+        print(self.raw_data[self.raw_data["sold_quantity"] == 0].head())
+
+        # 3. menu_id NaN 여부
+        print("🧪 Checking menu_id in future:")
+        future_rows = self.raw_data[self.raw_data["sold_quantity"] == 0]
+        print("Any NaN in menu_id?", future_rows["menu_id"].isna().any())
+        assert not future_rows["menu_id"].isna().any(), "❗ menu_id 매핑 실패: future 데이터에 메뉴 이름 누락 가능성"
+
+
         raw_predictions, x = self.model.predict(self.dataloader, mode="raw", return_x=True)
          
          # 평균 + 예측분산으로 오차 추정 (QuantileLoss 기반)
@@ -108,6 +131,11 @@ class Predictor:
         self.result_df["menu"] = self.result_df["menu_id"].map(menu_map)
         self.result_df["date"] = self.result_df["time_idx"].map(time_map)
         self.result_df = self.result_df.dropna(subset=["date", "menu"])
+
+
+
+
+
 
     def plot_forecast(self):
         import os

@@ -111,7 +111,7 @@ class Predictor:
         print("decoder_cat shape:", x["decoder_cat"].shape)  
 
         menu_ids = x["decoder_cat"][:, 0, 0].detach().cpu().numpy()
-        flat_menu_ids = np.repeat(menu_ids, means.shape[1])
+        flat_menu_ids = np.repeat(menu_ids, means.shape[1]).astype(int)
 
         print("flat_menu_ids:", flat_menu_ids.shape)
         print("time_idxs:", time_idxs.flatten().shape)
@@ -126,13 +126,27 @@ class Predictor:
         })
 
         # menu name + date 복원
-        menu_map = self.raw_data[["menu_id", "menu"]].drop_duplicates().set_index("menu_id")["menu"].to_dict()
+
+        self.raw_data["menu_id"] = self.raw_data["menu_id"].astype(int)
+        menu_map = dict(zip(self.raw_data["menu_id"].astype(int), self.raw_data["menu"]))
+
         time_map = self.raw_data[["time_idx", "date"]].drop_duplicates().set_index("time_idx")["date"].to_dict()
         self.result_df["menu"] = self.result_df["menu_id"].map(menu_map)
         self.result_df["date"] = self.result_df["time_idx"].map(time_map)
+        self.result_df["menu_id"] = self.result_df["menu_id"].astype(int)
+
+        print("menu isna count:", self.result_df["menu"].isna().sum())
+        print("date isna count:", self.result_df["date"].isna().sum())
+
         self.result_df = self.result_df.dropna(subset=["date", "menu"])
 
+        print("📦 result_df preview:")
+        print(self.result_df.head())
 
+        print("메뉴 값 분포:")
+        print(self.result_df["menu"].value_counts(dropna=False))
+
+        print("▶ raw_predictions['prediction'].shape:", raw_predictions["prediction"].shape)
 
 
 
@@ -167,7 +181,12 @@ class Predictor:
 
     def summarize_by_weekday(self):
         df = self.result_df.copy()
-        df["weekday"] = pd.to_datetime(df["date"]).dt.day_name()  # ex. 'Monday'
+
+        print("🔍 Summarizing... result_df shape:", df.shape)
+        print("menu unique:", df["menu"].unique())
+
+        df = df.dropna(subset=["menu", "date", "predicted_quantity"])
+        df["weekday"] = pd.to_datetime(df["date"]).dt.day_name()
         df["weekday"] = pd.Categorical(
             df["weekday"],
             categories=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
@@ -183,11 +202,9 @@ class Predictor:
         )
 
         pivot["Total"] = pivot.sum(axis=1)
-        pivot = pivot.sort_index()  # 월~일 정렬 보장
+        pivot = pivot.sort_index()
 
-        print("📊 요일별 메뉴 예측 수량:")
-        print(pivot.round(1))
+        print("📊 요약표:")
+        print(pivot)
 
-        # 저장도 가능
         pivot.to_csv("../results/weekday_menu_summary.csv")
-                

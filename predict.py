@@ -15,3 +15,4 @@ if __name__ == "__main__":
     p.save_predictions()
     print("Prediction complete. Results saved.")
     p.summarize_by_weekday()
+    

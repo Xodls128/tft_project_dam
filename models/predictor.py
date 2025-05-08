@@ -101,7 +101,11 @@ class Predictor:
 
     def plot_forecast(self):
         import os
-        os.makedirs("../results", exist_ok=True)
+        
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # predictor.py가 있는 디렉토리
+        RESULT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "results"))
+        os.makedirs(RESULT_DIR, exist_ok=True)
+
         for menu in self.result_df["menu"].unique():
             df_m = self.result_df[self.result_df["menu"] == menu]
             plt.figure(figsize=(10, 4))
@@ -111,8 +115,14 @@ class Predictor:
             plt.xticks(rotation=45)
             plt.legend()
             plt.tight_layout()
-            plt.savefig(f"../results/{menu}_forecast.png")
+            plt.savefig(os.path.join(RESULT_DIR, f"{menu}_forecast.png"))
             plt.close()
 
     def save_predictions(self):
-        self.result_df.to_csv("../results/next_week_predictions.csv", index=False)
+        import os
+
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        RESULT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "results"))
+        os.makedirs(RESULT_DIR, exist_ok=True)
+
+        self.result_df.to_csv(os.path.join(RESULT_DIR, "next_week_predictions.csv"), index=False)

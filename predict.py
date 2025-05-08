@@ -14,4 +14,4 @@ if __name__ == "__main__":
     p.plot_forecast()
     p.save_predictions()
     print("Prediction complete. Results saved.")
-    
+    p.summarize_by_weekday()

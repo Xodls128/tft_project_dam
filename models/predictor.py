@@ -164,3 +164,30 @@ class Predictor:
         os.makedirs(RESULT_DIR, exist_ok=True)
 
         self.result_df.to_csv(os.path.join(RESULT_DIR, "next_week_predictions.csv"), index=False)
+
+    def summarize_by_weekday(self):
+        df = self.result_df.copy()
+        df["weekday"] = pd.to_datetime(df["date"]).dt.day_name()  # ex. 'Monday'
+        df["weekday"] = pd.Categorical(
+            df["weekday"],
+            categories=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+            ordered=True
+        )
+
+        pivot = df.pivot_table(
+            index="weekday",
+            columns="menu",
+            values="predicted_quantity",
+            aggfunc="sum",
+            fill_value=0
+        )
+
+        pivot["Total"] = pivot.sum(axis=1)
+        pivot = pivot.sort_index()  # 월~일 정렬 보장
+
+        print("📊 요일별 메뉴 예측 수량:")
+        print(pivot.round(1))
+
+        # 저장도 가능
+        pivot.to_csv("../results/weekday_menu_summary.csv")
+                

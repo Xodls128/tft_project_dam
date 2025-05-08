@@ -19,32 +19,42 @@ class Predictor:
         self.result_df = None
 
     def load_data(self):
+        # (1) 원본 엑셀 불러오기
         df = pd.read_excel(self.data_path)
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         df["date"] = df["timestamp"].dt.date
+        df['menu'] = df['menu'].astype(str)
 
-        daily = df.groupby(["date", "menu"]).size().reset_index(name="sold_quantity")
+         # (2) 메뉴 → menu_id 명시적 매핑 (일관성 확보)
+        menu_list = sorted(df["menu"].unique())
+        menu_id_map =  {name: str(i) for i, name in enumerate(menu_list)}
+        df["menu_id"] = df["menu"].map(menu_id_map)
+
+        # (3) 일자-메뉴 단위 판매량 집계
+        daily = df.groupby(["date", "menu", "menu_id"]).size().reset_index(name="sold_quantity")
         daily["date"] = pd.to_datetime(daily["date"])
-        df["menu"] = df['menu'].astype(str).astype("category")
-        daily["menu_id"] = daily["menu"]
         daily = daily.sort_values("date")
 
+        # (4) time_idx 계산
         start_date = daily["date"].min()
         daily["time_idx"] = (daily["date"] - start_date).dt.days
 
-        # 미래 예측 구간 추가
+        # (5) 미래 예측용 7일 생성
         last_date = daily["date"].max()
         future_dates = [last_date + pd.Timedelta(days=i) for i in range(1, 8)]
-        menus = daily["menu"].unique().astype(str)
-        future = pd.DataFrame([(d, m) for d in future_dates for m in menus], columns=["date", "menu"])
-        future['menu'] = future['menu'].astype(str).astype("category")
-        future["menu_id"] = future["menu"]
-
+        future = pd.DataFrame([(d, m) for d in future_dates for m in menu_list], columns=["date", "menu"])
+        future["menu_id"] = future["menu"].map(menu_id_map)
         future["timestamp"] = future["date"]
         future["sold_quantity"] = 0
         future["time_idx"] = (future["date"] - start_date).dt.days
+    
+         # (6) 합치기 + menu 복원 컬럼 추가
+        self.raw_data = pd.concat([daily, future], ignore_index=True)
+        self.raw_data = self.raw_data.sort_values(["menu_id", "date"])
+        self.raw_data["menu"] = self.raw_data["menu_id"].map({v: k for k, v in menu_id_map.items()})
 
-        self.raw_data = pd.concat([daily, future], ignore_index=True).sort_values(["menu_id", "date"])
+        # (7) menu_id를 명시적으로 category로 변환
+        self.raw_data["menu_id"] = self.raw_data["menu_id"].astype("category")
 
     def setup_dataset(self):
         self.dataset = TimeSeriesDataSet(

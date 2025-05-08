@@ -14,4 +14,5 @@ if __name__ == "__main__":
     p.plot_forecast()
     p.save_predictions()
     print("Prediction complete. Results saved.")
-    
+    print("Result DF preview:")
+    print(p.result_df.head())

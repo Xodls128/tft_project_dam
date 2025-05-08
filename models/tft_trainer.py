@@ -2,6 +2,7 @@
 
 import torch
 from pytorch_forecasting import TemporalFusionTransformer
+from pytorch_forecasting.metrics import QuantileLoss
 from pytorch_lightning import Trainer
 from pytorch_forecasting import TimeSeriesDataSet
 from torch.utils.data import DataLoader
@@ -19,7 +20,7 @@ class TFTTrainer:
             hidden_size=16,
             attention_head_size=1,
             dropout=0.1,
-            loss=torch.nn.L1Loss(),
+            loss=QuantileLoss(),
             log_interval=10,
             reduce_on_plateau_patience=4,
         )

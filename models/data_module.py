@@ -14,7 +14,7 @@ class TFTDataModule:
         self.dataloader = None
 
     def load_and_preprocess(self):
-        df = pd.read_csv(self.path)
+        df = pd.read_excel(self.path)
         df['time_idx'] = pd.to_datetime(df['timestamp'])
         df['data'] = df['timestamp'].dt.date
 
@@ -28,19 +28,20 @@ class TFTDataModule:
         daily['time_idx'] = (daily['data'] - daily['data'].min()).dt.days
         daily['menu_id'] = daily['menu'].astype(('category')).cat.codes
 
-        slef.data = daily
+        self.data = daily
         
     def setup(self):
         self.dataset = TimeSeriesDataSet(
             self.data,
-            time_indx='time_idx',
+            time_idx='time_idx',
             target='sold_quantity',
             group_ids=['menu_id'],
-            max_encdoer_length=self.max_encoder_length,
+            max_encoder_length=self.max_encoder_length,
             max_prediction_length=self.max_prediction_length,
             time_varying_known_reals=['time_idx'],
-            time_varying_unkown_reals=['sold_quantity'],
-            categorical_encoders={'menu_id': NaNLabelEncoder().fit(self.data.menu_id),}
+            time_varying_unknown_reals=['sold_quantity'],
+            categorical_encoders={'menu_id': NaNLabelEncoder().fit(self.data.menu_id)},
+            allow_missing_timesteps=True # 비어날 수 있는 결측치 허용 (비연속시계열 허용)
         )
     def get_dataloader(self, batch_size: int = 64, num_workers: int = 0):
         self.dataloader = self.dataset.to_dataloader(train=True, batch_size=batch_size, num_workers=num_workers)

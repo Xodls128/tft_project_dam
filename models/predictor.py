@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
 from torch.utils.data import DataLoader
+from pytorch_forecasting.data import NaNLabelEncoder
 
 class Predictor:
     def __init__(self, model_path: str, data_path: str):
@@ -24,7 +25,8 @@ class Predictor:
 
         daily = df.groupby(["date", "menu"]).size().reset_index(name="sold_quantity")
         daily["date"] = pd.to_datetime(daily["date"])
-        daily["menu_id"] = daily["menu"].astype("category").cat.codes
+        df["menu"] = df['menu'].astype(str).astype("category")
+        daily["menu_id"] = daily["menu"]
         daily = daily.sort_values("date")
 
         start_date = daily["date"].min()
@@ -33,10 +35,12 @@ class Predictor:
         # 미래 예측 구간 추가
         last_date = daily["date"].max()
         future_dates = [last_date + pd.Timedelta(days=i) for i in range(1, 8)]
-        menus = daily["menu"].unique()
+        menus = daily["menu"].unique().astype(str)
         future = pd.DataFrame([(d, m) for d in future_dates for m in menus], columns=["date", "menu"])
+        future['menu'] = future['menu'].astype(str).astype("category")
+        future["menu_id"] = future["menu"]
+
         future["timestamp"] = future["date"]
-        future["menu_id"] = future["menu"].astype("category").cat.codes
         future["sold_quantity"] = 0
         future["time_idx"] = (future["date"] - start_date).dt.days
 
@@ -52,7 +56,9 @@ class Predictor:
             max_prediction_length=7,
             time_varying_known_reals=["time_idx"],
             time_varying_unknown_reals=["sold_quantity"],
-            allow_missing_timesteps=True
+            allow_missing_timesteps=True,
+            static_categoricals=["menu_id"],
+            categorical_encoders={'menu_id': NaNLabelEncoder().fit(self.raw_data.menu_id)}
         )
         self.dataloader = self.dataset.to_dataloader(train=False, batch_size=64, num_workers=0)
 
@@ -62,24 +68,24 @@ class Predictor:
 
     def predict(self):
         raw_predictions, x = self.model.predict(self.dataloader, mode="raw", return_x=True)
-        decoder_target = x["decoder_target"]
-        time_idxs = x["decoder_time_idx"].detach().cpu().numpy()
-        menu_ids = x["groups"][0].detach().cpu().numpy()
-        print("x keys:", x.keys())
-
-        # 평균 + 예측분산으로 오차 추정 (QuantileLoss 기반)
+         
+         # 평균 + 예측분산으로 오차 추정 (QuantileLoss 기반)
         means = raw_predictions["prediction"].mean(1).detach().cpu().numpy()
         p10 = raw_predictions["prediction"][:, :, 0].detach().cpu().numpy()
         p90 = raw_predictions["prediction"][:, :, -1].detach().cpu().numpy()
+        time_idxs = x["decoder_time_idx"].detach().cpu().numpy()
 
-        print("menu_ids (after repeat):", np.repeat(menu_ids, means.shape[1]).shape)
+        print("decoder_cat shape:", x["decoder_cat"].shape)  
+
+        menu_ids = x["decoder_cat"][:, 0, 0].detach().cpu().numpy()
+        flat_menu_ids = np.repeat(menu_ids, means.shape[1])
+
+        print("flat_menu_ids:", flat_menu_ids.shape)
         print("time_idxs:", time_idxs.flatten().shape)
         print("means:", means.flatten().shape)
-        print("p10:", p10.flatten().shape)
-        print("p90:", p90.flatten().shape)
 
         self.result_df = pd.DataFrame({
-            "menu_id": np.repeat(menu_ids, means.shape[1]),
+            "menu_id": flat_menu_ids,
             "time_idx": time_idxs.flatten(),
             "predicted_quantity": means.flatten(),
             "p10": p10.flatten(),
@@ -91,9 +97,11 @@ class Predictor:
         time_map = self.raw_data[["time_idx", "date"]].drop_duplicates().set_index("time_idx")["date"].to_dict()
         self.result_df["menu"] = self.result_df["menu_id"].map(menu_map)
         self.result_df["date"] = self.result_df["time_idx"].map(time_map)
-        self.result_df = self.result_df.sort_values(["date", "menu"])
+        self.result_df = self.result_df.dropna(subset=["date", "menu"])
 
     def plot_forecast(self):
+        import os
+        os.makedirs("../results", exist_ok=True)
         for menu in self.result_df["menu"].unique():
             df_m = self.result_df[self.result_df["menu"] == menu]
             plt.figure(figsize=(10, 4))

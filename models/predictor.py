@@ -148,8 +148,20 @@ class Predictor:
 
         print("▶ raw_predictions['prediction'].shape:", raw_predictions["prediction"].shape)
 
+        future_dates = self.raw_data[self.raw_data["sold_quantity"] == 0]["date"].unique()
+        df_future = self.result_df[self.result_df["date"].isin(future_dates)]
 
+        df_future.to_csv("./results/next_week_only.csv", index=False)
 
+        pivot = df_future.pivot_table(
+            index="date",
+            columns="menu",
+            values="predicted_quantity",
+            aggfunc="sum"
+        )
+        pivot.to_csv("./results/next_week_summary.csv")
+        print("📊 예측 결과 요약:")
+        print(pivot)
 
     def plot_forecast(self):
         import os

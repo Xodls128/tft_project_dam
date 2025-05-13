@@ -1,7 +1,7 @@
 # predict.py
 
 from models.predictor import Predictor
-from visualization.data_visualization import plot_next_week_prediction
+from visualization.data_visualization import run_all_plots
 
 if __name__ == "__main__":
     p = Predictor(
@@ -17,4 +17,4 @@ if __name__ == "__main__":
     print("Prediction complete. Results saved.")
     p.summarize_by_weekday()
 
-    plot_next_week_prediction()
+    run_all_plots()

@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
 from torch.utils.data import DataLoader
 from pytorch_forecasting.data import NaNLabelEncoder
+import os
 
 class Predictor:
     def __init__(self, model_path: str, data_path: str):
@@ -129,17 +130,17 @@ class Predictor:
 
         self.raw_data["menu_id"] = self.raw_data["menu_id"].astype(int)
         menu_map = dict(zip(self.raw_data["menu_id"].astype(int), self.raw_data["menu"]))
-
         time_map = self.raw_data[["time_idx", "date"]].drop_duplicates().set_index("time_idx")["date"].to_dict()
+        
         self.result_df["menu"] = self.result_df["menu_id"].map(menu_map)
         self.result_df["date"] = self.result_df["time_idx"].map(time_map)
         self.result_df["menu_id"] = self.result_df["menu_id"].astype(int)
+        self.result_df = self.result_df.dropna(subset=["date", "menu"])
+
 
         print("menu isna count:", self.result_df["menu"].isna().sum())
         print("date isna count:", self.result_df["date"].isna().sum())
-
-        self.result_df = self.result_df.dropna(subset=["date", "menu"])
-
+        
         print("📦 result_df preview:")
         print(self.result_df.head())
 
@@ -148,23 +149,80 @@ class Predictor:
 
         print("▶ raw_predictions['prediction'].shape:", raw_predictions["prediction"].shape)
 
-        future_dates = self.raw_data[self.raw_data["sold_quantity"] == 0]["date"].unique()
-        df_future = self.result_df[self.result_df["date"].isin(future_dates)]
+        # 5. 미래 기간별로 예측값 분기 저장
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        RESULT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "results"))
+        os.makedirs(RESULT_DIR, exist_ok=True)
 
-        df_future.to_csv("./results/next_week_only.csv", index=False)
+        # 🔍 미래 예측 대상 날짜만 추출
+        # future_dates = self.raw_data[self.raw_data["sold_quantity"] == 0]["date"].unique()
+        # df_future = self.result_df[self.result_df["date"].isin(future_dates)]
+        future_dates = pd.to_datetime(self.raw_data[self.raw_data["sold_quantity"] == 0]["date"]).dt.date
+        df_future = self.result_df[self.result_df["date"].dt.date.isin(future_dates)]
+        
+        df_future = df_future.sort_values("date")
 
-        pivot = df_future.pivot_table(
-            index="date",
-            columns="menu",
-            values="predicted_quantity",
-            aggfunc="sum"
+        # 기준 날짜: 예측 시작일
+        start_date = df_future["date"].min()
+
+        # 다음주
+        df_week = df_future[df_future["date"] <= start_date + pd.Timedelta(days=6)]
+        df_week.to_csv(os.path.join(RESULT_DIR, "next_week_only.csv"), index=False)
+        df_week.pivot_table(index="date", columns="menu", values="predicted_quantity", aggfunc="sum").to_csv(
+            os.path.join(RESULT_DIR, "next_week_summary.csv")
         )
-        pivot.to_csv("./results/next_week_summary.csv")
+        output_path = os.path.abspath("./results/test_save.csv")
+        print("✅ Writing to:", output_path)
+
+        df_week.to_csv(output_path, index=False)
+
+        # 바로 읽어서 내용 확인
+        if os.path.exists(output_path):
+            print("✅ File created. Preview:")
+            preview = pd.read_csv(output_path)
+            print(preview.head())
+        else:
+            print("❌ File not found.")
+
+        # 다음달
+        df_month = df_future[df_future["date"] <= start_date + pd.Timedelta(days=29)]
+        df_month.to_csv(os.path.join(RESULT_DIR, "next_month_only.csv"), index=False)
+        df_month.pivot_table(index="date", columns="menu", values="predicted_quantity", aggfunc="sum").to_csv(
+            os.path.join(RESULT_DIR, "next_month_summary.csv")
+        )
+
+        # 다음해
+        df_year = df_future[df_future["date"] <= start_date + pd.Timedelta(days=364)]
+        df_year.to_csv(os.path.join(RESULT_DIR, "next_year_only.csv"), index=False)
+        df_year.pivot_table(index="date", columns="menu", values="predicted_quantity", aggfunc="sum").to_csv(
+            os.path.join(RESULT_DIR, "next_year_summary.csv")
+        )
+
+        print("🔍 df_future preview:")
+        print(df_future.head())
+        print("df_future shape:", df_future.shape)
+        print("df_future date range:", df_future["date"].min(), "~", df_future["date"].max())
+
         print("📊 예측 결과 요약:")
-        print(pivot)
+        print(df_week.pivot_table(index="date", columns="menu", values="predicted_quantity", aggfunc="sum"))
+
+        # future_dates = self.raw_data[self.raw_data["sold_quantity"] == 0]["date"].unique()
+        # df_future = self.result_df[self.result_df["date"].isin(future_dates)]
+
+        # df_future.to_csv("./results/next_week_only.csv", index=False)
+
+        
+        # pivot = df_future.pivot_table(
+        #     index="date",
+        #     columns="menu",
+        #     values="predicted_quantity",
+        #     aggfunc="sum"
+        # )
+        # pivot.to_csv("./results/next_week_summary.csv")
+        # print("📊 예측 결과 요약:")
+        # print(pivot)
 
     def plot_forecast(self):
-        import os
         
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # predictor.py가 있는 디렉토리
         RESULT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "results"))
@@ -183,7 +241,6 @@ class Predictor:
             plt.close()
 
     def save_predictions(self):
-        import os
 
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         RESULT_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "results"))
@@ -220,3 +277,4 @@ class Predictor:
         print(pivot)
 
         pivot.to_csv("../results/weekday_menu_summary.csv")
+
